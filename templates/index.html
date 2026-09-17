@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>俄语单词发音查询</title>
+<style>
+  :root { --bg:#0f1420; --card:#1a2233; --border:#2a3450; --text:#e6ebf5; --muted:#8b96ad; --accent:#4f8cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .card { width:100%; max-width:520px; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; box-shadow:0 10px 40px rgba(0,0,0,.35); }
+  h1 { margin:0 0 4px; font-size:22px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:24px; }
+  input[type=text] { width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--border); background:#0d1322; color:var(--text); font-size:16px; outline:none; }
+  input[type=text]:focus { border-color:var(--accent); }
+  .row { display:flex; gap:10px; margin:12px 0; }
+  select { flex:1; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#0d1322; color:var(--text); font-size:14px; outline:none; cursor:pointer; }
+  button { width:100%; padding:13px; border:none; border-radius:10px; background:var(--accent); color:#fff; font-size:16px; font-weight:600; cursor:pointer; transition:filter .15s; }
+  button:hover { filter:brightness(1.1); }
+  button:active { filter:brightness(.95); }
+  #result { margin-top:20px; display:none; }
+  audio { width:100%; margin-bottom:16px; }
+  .info { background:#0d1322; border:1px solid var(--border); border-radius:10px; padding:16px; font-size:14px; }
+  .info .line { margin:6px 0; }
+  .info .k { color:var(--muted); display:inline-block; min-width:72px; }
+  .info .stressed { font-size:26px; letter-spacing:1px; color:#ffd479; }
+  .info .ipa { font-size:18px; letter-spacing:1px; color:#7dd3fc; }
+  .info .native { width:100%; height:36px; margin-top:4px; }
+  .info .hint { color:var(--muted); font-size:13px; }
+  .info .err { color:#ff7d7d; }
+  .history { margin-top:20px; }
+  .history .h-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .history .h-title { font-size:13px; color:var(--muted); }
+  .history .clear-btn { width:auto; background:none; border:1px solid var(--border); color:var(--muted); font-size:12px; padding:4px 12px; border-radius:8px; cursor:pointer; }
+  .history .clear-btn:hover { color:#ff7d7d; border-color:#ff7d7d; }
+  .history ul { list-style:none; margin:0; padding:0; max-height:240px; overflow-y:auto; }
+  .history li { display:flex; align-items:center; gap:10px; padding:9px 10px; border-bottom:1px solid var(--border); cursor:pointer; font-size:14px; }
+  .history li:hover { background:#0d1322; }
+  .history li .w { color:#ffd479; min-width:70px; }
+  .history li .s { flex:1; letter-spacing:1px; }
+  .history li .t { font-size:11px; color:var(--muted); }
+  .history li.empty { color:var(--muted); cursor:default; }
+  .tips { margin-top:16px; color:var(--muted); font-size:12px; line-height:1.7; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>俄语单词发音查询</h1>
+  <div class="sub">输入俄语单词，自动标注重音 + 合成标准发音</div>
+
+  <input type="text" id="word" placeholder="例如：привет / спасибо / русский" autofocus
+         onkeydown="if(event.key==='Enter')go()">
+
+  <div class="row">
+    <select id="voice">
+      {% for id, name in voices.items() %}
+      <option value="{{ id }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+    <select id="rate">
+      <option value="-30%">慢速 -30%</option>
+      <option value="-15%">慢速 -15%</option>
+      <option value="+0%" selected>正常语速</option>
+      <option value="+15%">快速 +15%</option>
+    </select>
+  </div>
+
+  <button onclick="go()">🔊 查询发音</button>
+
+  <div id="result">
+    <audio id="player" controls autoplay></audio>
+    <div class="info" id="info"></div>
+  </div>
+
+  <div class="history">
+    <div class="h-head">
+      <span class="h-title">历史记录（点击回填并重新发音）</span>
+      <button class="clear-btn" onclick="clearHistory()">清空</button>
+    </div>
+    <ul id="historyList"><li class="empty">加载中…</li></ul>
+  </div>
+
+  <div class="tips">
+    提示：重音符号「´」标在需要重读的元音上（如 приве́т）。发音按带重音的版本合成，更准确。
+    也可手动输入带重音的词，如 ма́ма。
+  </div>
+</div>
+
+<script>
+async function go() {
+  const word = document.getElementById('word').value.trim();
+  if (!word) return;
+  const voice = document.getElementById('voice').value;
+  const rate = document.getElementById('rate').value;
+
+  const result = document.getElementById('result');
+  result.style.display = 'block';
+
+  // 1) 发音（后端会自动标重音后用带重音版本合成）
+  const player = document.getElementById('player');
+  player.src = '/api/pronounce?word=' + encodeURIComponent(word)
+             + '&voice=' + encodeURIComponent(voice)
+             + '&rate=' + encodeURIComponent(rate);
+
+  // 2) 重音标注
+  const info = document.getElementById('info');
+  info.innerHTML = '<div class="line">标注重音中…</div>';
+  try {
+    const r = await fetch('/api/lookup?word=' + encodeURIComponent(word));
+    const d = await r.json();
+    if (d.error) {
+      info.innerHTML = '<div class="line err">' + d.error + '</div>';
+    } else {
+      let html = '<div class="line"><span class="k">原词</span>' + d.word + '</div>';
+      html += '<div class="line"><span class="k">重音</span><span class="stressed">' + d.stressed + '</span></div>';
+      if (d.ipa) {
+        html += '<div class="line"><span class="k">IPA</span><span class="ipa">/' + d.ipa + '/</span></div>';
+      }
+      if (d.has_native) {
+        html += '<div class="line"><span class="k">真人发音</span><audio class="native" controls src="/api/native-audio?word=' + encodeURIComponent(word) + '"></audio></div>';
+      }
+      html += '<div class="line hint">发音已按带重音的版本合成，重读标「´」的元音即可。</div>';
+      info.innerHTML = html;
+      loadHistory();
+    }
+  } catch (e) {
+    info.innerHTML = '<div class="line err">重音标注失败：' + e + '</div>';
+  }
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function loadHistory() {
+  const ul = document.getElementById('historyList');
+  try {
+    const r = await fetch('/api/history');
+    const items = await r.json();
+    if (!items.length) {
+      ul.innerHTML = '<li class="empty">暂无记录，查过的单词会显示在这里</li>';
+      return;
+    }
+    ul.innerHTML = items.map(it =>
+      '<li onclick="fillWord(this)">' +
+        '<span class="w">' + escapeHtml(it.word) + '</span>' +
+        '<span class="s">' + escapeHtml(it.stressed) + '</span>' +
+        '<span class="t">' + escapeHtml(it.time) + '</span>' +
+      '</li>'
+    ).join('');
+  } catch (e) {
+    ul.innerHTML = '<li class="empty">历史记录加载失败</li>';
+  }
+}
+
+function fillWord(li) {
+  const w = li.querySelector('.w').textContent;
+  document.getElementById('word').value = w;
+  go();
+}
+
+async function clearHistory() {
+  await fetch('/api/history/clear', { method: 'POST' });
+  loadHistory();
+}
+
+loadHistory();
+</script>
+</body>
+</html>

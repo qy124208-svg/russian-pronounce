@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+history.json
+.venv/
+venv/
+*.mp3
+*.ogg
