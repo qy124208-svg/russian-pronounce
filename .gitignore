@@ -3,5 +3,8 @@ __pycache__/
 history.json
 .venv/
 venv/
-*.mp3
-*.ogg
+build/
+dist/
+download_log*.txt
+urls_test.txt
+transcode_log.txt

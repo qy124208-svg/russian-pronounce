@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>俄语单词发音查询</title>
+<style>
+  :root {
+    --blue: #0b5cad;
+    --purple: #6a1b9a;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --muted: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 {
+    font-size: 22px; text-align: center; margin: 12px 0 20px;
+    color: var(--blue); font-weight: 600;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px; margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .search { display: flex; gap: 8px; }
+  .search input {
+    flex: 1; padding: 11px 14px; font-size: 16px;
+    border: 1px solid var(--border); border-radius: 8px; outline: none;
+  }
+  .search input:focus { border-color: var(--blue); }
+  .search button {
+    padding: 11px 20px; font-size: 15px; background: var(--blue);
+    color: #fff; border: none; border-radius: 8px; cursor: pointer;
+  }
+  .search button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .word { font-size: 20px; margin-bottom: 6px; word-break: break-all; }
+  .stress {
+    font-size: 26px; font-weight: 700; color: var(--blue);
+    margin-bottom: 6px; word-break: break-all;
+  }
+  .ipa { font-size: 17px; color: var(--purple); margin-bottom: 14px; word-break: break-all; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btns button {
+    padding: 10px 18px; font-size: 15px; border-radius: 8px;
+    border: 1px solid var(--border); background: #fff; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btns button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btns .primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btns .native { background: #eef6ff; color: var(--blue); border-color: #cfe4ff; }
+  .status { margin-top: 12px; font-size: 13px; color: var(--muted); min-height: 18px; }
+  .history { margin-top: 14px; }
+  .history h2 { font-size: 14px; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+  .history .item {
+    padding: 8px 10px; border-radius: 6px; cursor: pointer;
+    font-size: 15px; border-bottom: 1px solid #f1f5f9;
+  }
+  .history .item:hover { background: #f1f5f9; }
+  .history .item .w { font-weight: 600; }
+  .history .item .s { color: var(--blue); margin-left: 6px; }
+  .clear { float: right; font-size: 12px; color: var(--muted); cursor: pointer; border: none; background: none; }
+  .foot { text-align: center; color: var(--muted); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🔤 俄语单词发音查询</h1>
+
+  <div class="card">
+    <div class="search">
+      <input id="input" type="text" placeholder="输入俄语单词，如 привет" autocomplete="off">
+      <button id="btn">查询</button>
+    </div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none;">
+    <div class="word" id="word"></div>
+    <div class="stress" id="stress"></div>
+    <div class="ipa" id="ipa"></div>
+    <div class="btns">
+      <button class="primary" id="btnTts">▶ 标准发音</button>
+      <button class="native" id="btnNative">▶ 真人发音</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card history">
+    <h2>历史记录 <button class="clear" id="clearBtn">清空</button></h2>
+    <div id="hist"></div>
+  </div>
+
+  <div class="foot">数据来源 Wiktionary · 离线词库 · 标准发音由浏览器 TTS 提供</div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
