@@ -25,31 +25,98 @@ async function lookup(word) {
   }
 }
 
-/* ---------- 标准发音（浏览器 TTS）---------- */
-let ruVoice = null;
-function loadVoices() {
-  const vs = speechSynthesis.getVoices();
-  ruVoice =
-    vs.find((v) => v.lang === "ru-RU") ||
-    vs.find((v) => v.lang.toLowerCase().startsWith("ru")) ||
-    null;
+/* ---------- 标准发音（Edge-TTS，微软接口，国内直连可用）---------- */
+const EDGE_VOICE = "ru-RU-SvetlanaNeural";
+const EDGE_FMT = "audio-24khz-48kbitrate-mono-mp3";
+
+function uuid() {
+  return (crypto.randomUUID && crypto.randomUUID()) || (Date.now() + "-" + Math.random());
 }
-if ("speechSynthesis" in window) {
-  loadVoices();
-  speechSynthesis.onvoiceschanged = loadVoices;
+
+function escXml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// 通过 Edge-TTS WebSocket 合成语音，成功回调 Blob(mp3)，失败回调 onError
+function edgeTTS(text, onBlob, onError) {
+  const wsUrl = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1" +
+    "?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=" + uuid();
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch (e) {
+    onError();
+    return;
+  }
+  ws.binaryType = "arraybuffer";
+  const chunks = [];
+  let ended = false;
+  const now = () => new Date().toISOString();
+
+  ws.onopen = () => {
+    const cfg = "X-Timestamp:" + now() + "\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" +
+      '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"' + EDGE_FMT + '"}}}}';
+    ws.send(cfg);
+    const ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='ru-RU'>" +
+      "<voice name='" + EDGE_VOICE + "'><prosody pitch='+0Hz' rate='+0%' volume='+0%'>" +
+      escXml(text) + "</prosody></voice></speak>";
+    const msg = "X-RequestId:" + uuid() + "\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:" + now() + "Path:ssml\r\n\r\n" + ssml;
+    ws.send(msg);
+  };
+
+  ws.onmessage = (e) => {
+    if (ended) return;
+    if (typeof e.data === "string") {
+      if (e.data.indexOf("Path:turn.end") >= 0) {
+        ended = true;
+        ws.close();
+        if (chunks.length) onBlob(new Blob(chunks, { type: "audio/mpeg" }));
+        else onError();
+      }
+      return;
+    }
+    const bytes = new Uint8Array(e.data);
+    let sep = -1;
+    for (let i = 0; i < bytes.length - 3; i++) {
+      if (bytes[i] === 13 && bytes[i + 1] === 10 && bytes[i + 2] === 13 && bytes[i + 3] === 10) {
+        sep = i + 4;
+        break;
+      }
+    }
+    if (sep > 0 && sep < bytes.length) {
+      const head = new TextDecoder().decode(bytes.slice(0, sep));
+      if (head.indexOf("Path:audio") >= 0) {
+        chunks.push(bytes.slice(sep));
+      }
+    }
+  };
+
+  ws.onerror = () => {
+    if (!ended) {
+      ended = true;
+      onError();
+    }
+  };
 }
 
 function speak(text) {
-  if (!("speechSynthesis" in window)) {
-    setStatus("当前浏览器不支持语音合成");
-    return;
-  }
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "ru-RU";
-  if (ruVoice) u.voice = ruVoice;
-  u.rate = 0.9;
-  speechSynthesis.speak(u);
+  setStatus("正在生成标准发音…");
+  edgeTTS(text, (blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = new Audio(url);
+    a.onended = () => { try { URL.revokeObjectURL(url); } catch (e) {} };
+    a.play().then(() => setStatus("正在播放标准发音…")).catch(() => setStatus("标准发音播放失败"));
+  }, () => {
+    // Edge-TTS 失败兜底：退回浏览器 TTS（部分环境可能无声）
+    if (!("speechSynthesis" in window)) {
+      setStatus("标准发音生成失败");
+      return;
+    }
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ru-RU";
+    speechSynthesis.speak(u);
+  });
 }
 
 /* ---------- 真人发音 ---------- */
