@@ -96,7 +96,13 @@ def main(src, out):
             if audio:
                 entry["audio"] = audio
             if en:
-                entry["en"] = en
+                # 合并而非覆盖：kaikki 把同名词条按词源拆成多条（如 вода 词源1=水、
+                # 词源2=捉迷藏的"鬼"），主要义项（词源1）先出现，追加去重后取前 3 个即可保留主义
+                merged = entry.get("en", [])
+                for g in en:
+                    if g and g not in merged:
+                        merged.append(g)
+                entry["en"] = merged[:3]
             word_map[clean_word] = entry
 
             # 所有带重音的变形词写入（只补 accent）
