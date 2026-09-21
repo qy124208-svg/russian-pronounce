@@ -11,6 +11,7 @@
 """
 import asyncio
 import datetime
+import gzip
 import hashlib
 import io
 import json
@@ -45,6 +46,65 @@ _STRESS_CACHE = {}
 # Wiktionary（移动版）抓取缓存，避免重复请求
 _WIKT_CACHE = {}
 
+# 本地离线词库（kaikki.org Wiktionary 转储提取，含重音/IPA/真人发音文件名）
+_LOCAL_DICT = None
+
+# 在线接口（Morpher 重音 / Wiktionary IPA）可用性：进程级自动探测 + 缓存。
+# 本机开代理时在线可用 → 本地 miss 时走在线补覆盖（短语/句子/低频词）；
+# 朋友无代理时首次探测 3s 失败后缓存 False → 之后本地词库秒出，不再反复卡超时。
+# None = 未探测；不影响 Edge-TTS 标准发音（其国内可直连，保持在线）。
+_ONLINE_AVAILABLE = None
+
+
+def _online_available():
+    """探测在线接口是否可达（Morpher 快速请求，3s 超时），结果缓存。"""
+    global _ONLINE_AVAILABLE
+    if _ONLINE_AVAILABLE is not None:
+        return _ONLINE_AVAILABLE
+    try:
+        r = requests.post(
+            "https://ws3.morpher.ru/russian/addstressmarks",
+            data="тест".encode("utf-8"),
+            headers={"Content-Type": "text/plain; charset=utf-8",
+                     "User-Agent": UA["User-Agent"]},
+            timeout=3,
+        )
+        _ONLINE_AVAILABLE = (r.status_code == 200)
+    except Exception:
+        _ONLINE_AVAILABLE = False
+    return _ONLINE_AVAILABLE
+
+
+def _resource_path(name):
+    """定位打包进 EXE 的资源文件（兼容 PyInstaller 的 sys._MEIPASS）。"""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, name)
+
+
+def _load_local_dict():
+    """惰性加载本地词库到内存（一次性）。失败返回空 dict。"""
+    global _LOCAL_DICT
+    if _LOCAL_DICT is not None:
+        return _LOCAL_DICT
+    _LOCAL_DICT = {}
+    path = _resource_path("local_dict.json.gz")
+    if os.path.exists(path):
+        try:
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                _LOCAL_DICT = json.load(f)
+        except Exception:
+            _LOCAL_DICT = {}
+    return _LOCAL_DICT
+
+
+def _strip_accent(word):
+    """去掉重音符号（U+0301）并转小写，作为本地词库的查询键。
+
+    必须转小写：词库 key 全小写，而手机输入法常自动首字母大写，
+    不转会导致 miss 并误走被墙的在线接口。
+    """
+    return word.replace("́", "").lower()
+
 
 def add_stress(word):
     """调用 Morpher.ru 给俄语单词/文本自动标注重音。失败时原样返回。
@@ -54,25 +114,31 @@ def add_stress(word):
     """
     if word in _STRESS_CACHE:
         return _STRESS_CACHE[word]
+    # 本地词库优先（离线秒出，无需联网）
+    local = _load_local_dict().get(_strip_accent(word))
+    if local and local.get("accent"):
+        _STRESS_CACHE[word] = local["accent"]
+        return local["accent"]
     stressed = word
-    # proxies=None 走 requests 默认（读系统代理）；None 直连作为兜底
-    for proxies in (None, {"http": None, "https": None}):
-        try:
-            r = requests.post(
-                "https://ws3.morpher.ru/russian/addstressmarks",
-                data=word.encode("utf-8"),
-                headers={"Content-Type": "text/plain; charset=utf-8",
-                         "User-Agent": UA["User-Agent"]},
-                timeout=6,
-                proxies=proxies,
-            )
-            if r.status_code == 200:
-                m = re.search(r"<string>(.*?)</string>", r.text, re.DOTALL)
-                if m:
-                    stressed = m.group(1).strip()
-                    break
-        except Exception:
-            continue
+    if _online_available():
+        # proxies=None 走 requests 默认（读系统代理）；None 直连作为兜底
+        for proxies in (None, {"http": None, "https": None}):
+            try:
+                r = requests.post(
+                    "https://ws3.morpher.ru/russian/addstressmarks",
+                    data=word.encode("utf-8"),
+                    headers={"Content-Type": "text/plain; charset=utf-8",
+                             "User-Agent": UA["User-Agent"]},
+                    timeout=6,
+                    proxies=proxies,
+                )
+                if r.status_code == 200:
+                    m = re.search(r"<string>(.*?)</string>", r.text, re.DOTALL)
+                    if m:
+                        stressed = m.group(1).strip()
+                        break
+            except Exception:
+                continue
     _STRESS_CACHE[word] = stressed
     return stressed
 
@@ -85,27 +151,34 @@ def fetch_wiktionary(word):
     """
     if word in _WIKT_CACHE:
         return _WIKT_CACHE[word]
+    # 本地词库优先（离线提供 IPA + 真人发音文件名）
+    local = _load_local_dict().get(_strip_accent(word))
+    if local and (local.get("ipa") or local.get("audio")):
+        info = {"ipa": local.get("ipa"), "ogg": local.get("audio")}
+        _WIKT_CACHE[word] = info
+        return info
     info = None
-    try:
-        r = requests.get(
-            "https://ru.m.wiktionary.org/wiki/" + urllib.parse.quote(word),
-            headers=UA,
-            timeout=10,
-        )
-        if r.status_code == 200:
-            html = r.text
-            ipa = None
-            m = re.search(r'<span class="IPA"[^>]*>([^<]+)</span>', html)
-            if m:
-                ipa = m.group(1)
-            ogg = None
-            m = re.search(r'([A-Za-z-]+-[а-яёА-ЯЁ0-9_-]+\.ogg)', html)
-            if m:
-                ogg = m.group(1)
-            if ipa or ogg:
-                info = {"ipa": ipa, "ogg": ogg}
-    except Exception:
-        pass
+    if _online_available():
+        try:
+            r = requests.get(
+                "https://ru.m.wiktionary.org/wiki/" + urllib.parse.quote(word),
+                headers=UA,
+                timeout=10,
+            )
+            if r.status_code == 200:
+                html = r.text
+                ipa = None
+                m = re.search(r'<span class="IPA"[^>]*>([^<]+)</span>', html)
+                if m:
+                    ipa = m.group(1)
+                ogg = None
+                m = re.search(r'([A-Za-z-]+-[а-яёА-ЯЁ0-9_-]+\.ogg)', html)
+                if m:
+                    ogg = m.group(1)
+                if ipa or ogg:
+                    info = {"ipa": ipa, "ogg": ogg}
+        except Exception:
+            pass
     _WIKT_CACHE[word] = info
     return info
 
@@ -115,6 +188,21 @@ def get_ogg_url(filename):
     h = hashlib.md5(filename.encode("utf-8")).hexdigest()
     return ("https://upload.wikimedia.org/wikipedia/commons/%s/%s/%s"
             % (h[0], h[:2], urllib.parse.quote(filename)))
+
+
+def get_native_audio_path(ogg_filename):
+    """返回本地真人发音 mp3 的绝对路径（不存在则返回 None）。
+
+    优先 PyInstaller 打包目录(_MEIPASS/audios)，否则源码目录 docs/audios。
+    .ogg 文件名转 .mp3（已在本地转码，绕开被墙的 Wikimedia CDN）。
+    """
+    mp3 = re.sub(r"\.ogg$", ".mp3", ogg_filename, flags=re.IGNORECASE)
+    for base in (_resource_path("audios"),
+                 os.path.join(BASE_DIR, "docs", "audios")):
+        p = os.path.join(base, mp3)
+        if os.path.exists(p):
+            return p
+    return None
 
 
 async def synth_mp3(word, voice, rate):
@@ -214,21 +302,17 @@ def lookup():
 
 @app.route("/api/native-audio")
 def native_audio():
-    """返回真人发音 .ogg（Wikimedia Commons 直链），无则 404。"""
+    """返回本地真人发音 mp3（离线，不依赖被墙的 Wikimedia），无则 404。"""
     word = (request.args.get("word") or "").strip()
     if not word:
         return jsonify({"error": "请输入俄语单词"}), 400
     wikt = fetch_wiktionary(word)
     if not wikt or not wikt.get("ogg"):
         return jsonify({"error": "暂无真人发音"}), 404
-    try:
-        r = requests.get(get_ogg_url(wikt["ogg"]), headers=UA, timeout=15)
-        if r.status_code != 200:
-            return jsonify({"error": "真人发音下载失败"}), 404
-    except Exception:
-        return jsonify({"error": "真人发音下载失败"}), 500
-    return send_file(io.BytesIO(r.content), mimetype="audio/ogg",
-                     download_name=wikt["ogg"])
+    path = get_native_audio_path(wikt["ogg"])
+    if not path:
+        return jsonify({"error": "本地无该词真人发音文件"}), 404
+    return send_file(path, mimetype="audio/mpeg")
 
 
 @app.route("/api/history")

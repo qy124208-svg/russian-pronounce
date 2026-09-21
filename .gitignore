@@ -8,3 +8,10 @@ dist/
 download_log*.txt
 urls_test.txt
 transcode_log.txt
+kaikki_ru.jsonl.gz
+local_dict.json.gz
+local_dict.json.gz.bak
+*.bak
+build_new.log
+ru_50k.txt
+probe_lemma.py
