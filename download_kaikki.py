@@ -8,6 +8,12 @@ import urllib.request
 URL = "https://kaikki.org/dictionary/Russian/kaikki.org-dictionary-Russian.jsonl.gz"
 OUT = "kaikki_ru.jsonl.gz"
 THREADS = 8
+
+if len(sys.argv) >= 3:
+    URL = sys.argv[1]
+    OUT = sys.argv[2]
+elif len(sys.argv) == 2:
+    URL = sys.argv[1]
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 
 

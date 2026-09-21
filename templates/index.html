@@ -119,6 +119,12 @@ async function go() {
       if (d.has_native) {
         html += '<div class="line"><span class="k">真人发音</span><audio class="native" controls src="/api/native-audio?word=' + encodeURIComponent(word) + '"></audio></div>';
       }
+      if (d.zh && d.zh.length) {
+        html += '<div class="line"><span class="k">中文</span>' + d.zh.map(escapeHtml).join('；') + '</div>';
+      }
+      if (d.en && d.en.length) {
+        html += '<div class="line"><span class="k">英文</span>' + d.en.map(escapeHtml).join('；') + '</div>';
+      }
       html += '<div class="line hint">发音已按带重音的版本合成，重读标「´」的元音即可。</div>';
       info.innerHTML = html;
       loadHistory();

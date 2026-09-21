@@ -80,6 +80,12 @@ function showResult(entry, rawWord) {
     $("stress").textContent = "重音： （未标出）" + rawWord;
   }
   $("ipa").textContent = entry.ipa ? "IPA： /" + entry.ipa + "/" : "IPA： —";
+  const zh = entry.zh && entry.zh.length ? "中文： " + entry.zh.join("；") : "";
+  $("zh").textContent = zh;
+  $("zh").style.display = zh ? "" : "none";
+  const en = entry.en && entry.en.length ? "英文： " + entry.en.join("；") : "";
+  $("en").textContent = en;
+  $("en").style.display = en ? "" : "none";
   $("btnTts").disabled = false;
   $("btnNative").disabled = !entry.audio;
   if (entry.audio) {

@@ -53,6 +53,16 @@ def main(src, out):
                     if isinstance(a, str) and a.endswith(".ogg"):
                         audio = a
 
+            # 英文释义（senses[].glosses，最多取 3 个，作为双语翻译的英文部分）
+            en = []
+            for s in d.get("senses", []):
+                for g in (s.get("glosses") or []):
+                    g = (g or "").strip()
+                    if g and g not in en:
+                        en.append(g)
+                if len(en) >= 3:
+                    break
+
             forms = d.get("forms", [])
             # 主词重音拼写：只接受"重音形式去重音后 == 词条本身"的形式。
             # 避免两类污染：
@@ -85,6 +95,8 @@ def main(src, out):
                 entry["ipa"] = ipa
             if audio:
                 entry["audio"] = audio
+            if en:
+                entry["en"] = en
             word_map[clean_word] = entry
 
             # 所有带重音的变形词写入（只补 accent）

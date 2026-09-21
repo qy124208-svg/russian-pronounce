@@ -126,6 +126,12 @@ class App:
         self.lbl_ipa = ttk.Label(res, text="—", font=("Segoe UI", 12),
                                  foreground="#6a1b9a", wraplength=480)
         self.lbl_ipa.pack(anchor="w", **pad)
+        self.lbl_zh = ttk.Label(res, text="", font=("Microsoft YaHei", 11),
+                                foreground="#b45309", wraplength=480, justify="left")
+        self.lbl_zh.pack(anchor="w", **pad)
+        self.lbl_en = ttk.Label(res, text="", font=("Segoe UI", 10),
+                                foreground="#666", wraplength=480, justify="left")
+        self.lbl_en.pack(anchor="w", **pad)
 
         btns = ttk.Frame(res)
         btns.pack(anchor="w", **pad)
@@ -169,12 +175,15 @@ class App:
         try:
             stressed = core.add_stress(word)
             wikt = core.fetch_wiktionary(word) or {}
+            local = core._load_local_dict().get(core._strip_accent(word)) or {}
             result = {
                 "word": word,
                 "stressed": stressed,
                 "has_stress": stressed != word,
                 "ipa": wikt.get("ipa"),
                 "ogg": wikt.get("ogg"),
+                "zh": local.get("zh", []),
+                "en": local.get("en", []),
             }
         except Exception as e:
             err = str(e)
@@ -195,6 +204,8 @@ class App:
             self.lbl_ipa.config(text="IPA:   /" + result["ipa"] + "/")
         else:
             self.lbl_ipa.config(text="IPA:   —")
+        self.lbl_zh.config(text=("中文:  " + "；".join(result["zh"])) if result["zh"] else "")
+        self.lbl_en.config(text=("英文:  " + "；".join(result["en"])) if result["en"] else "")
         self.btn_tts.config(state="normal")
         self.btn_native.config(state="normal" if result["ogg"] else "disabled")
         self.status.config(text="查询完成" + ("（含真人发音）" if result["ogg"] else ""))

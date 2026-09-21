@@ -9,7 +9,11 @@ download_log*.txt
 urls_test.txt
 transcode_log.txt
 kaikki_ru.jsonl.gz
+kaikki_zh.jsonl.gz
+zhwiktionary.xml.bz2
+zh_map.json
 local_dict.json.gz
+local_dict.json.gz.new
 local_dict.json.gz.bak
 *.bak
 build_new.log

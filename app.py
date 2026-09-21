@@ -291,12 +291,15 @@ def lookup():
     stressed = add_stress(word)
     record_history(word, stressed)
     wikt = fetch_wiktionary(word) or {}
+    local = _load_local_dict().get(_strip_accent(word)) or {}
     return jsonify({
         "word": word,
         "stressed": stressed,
         "has_stress": stressed != word,
         "ipa": wikt.get("ipa"),
         "has_native": bool(wikt.get("ogg")),
+        "en": local.get("en", []),
+        "zh": local.get("zh", []),
     })
 
 
